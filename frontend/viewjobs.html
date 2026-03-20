@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>View Jobs - JobVista</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background: #f0f4f8;
+            font-family: Arial, sans-serif;
+        }
+
+        .job-card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            background: white;
+        }
+
+        .alert-position {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container mt-4">
+        <h2 class="text-center mb-4">Available Jobs</h2>
+        <div id="job-list"></div>
+    </div>
+
+    <div id="alert-container" class="alert-position"></div>
+
+    <script>
+        let appliedJobs = [];
+
+        async function loadAppliedJobs() {
+            const email = localStorage.getItem("userEmail");
+            if (!email) return;
+
+            try {
+                const res = await fetch(`http://localhost:7071/api/getappliedjobs?email=${email}`);
+                if (res.ok) {
+                    appliedJobs = await res.json();
+                }
+            } catch (err) {
+                console.error("Error fetching applied jobs:", err);
+            }
+        }
+
+        function hasAlreadyApplied(jobId) {
+            return appliedJobs.some(j => j.jobId === jobId);
+        }
+
+        async function fetchJobs() {
+            await loadAppliedJobs();
+
+            try {
+                const response = await fetch("http://localhost:7071/api/getallJobs");
+                const jobs = await response.json();
+                const jobList = document.getElementById("job-list");
+
+                if (!Array.isArray(jobs) || jobs.length === 0) {
+                    jobList.innerHTML = "<p>No jobs found.</p>";
+                    return;
+                }
+
+                jobList.innerHTML = ""; // Clear previous results
+
+                jobs.forEach(job => {
+                    const jobId = job.title.toLowerCase();
+                    const alreadyApplied = hasAlreadyApplied(jobId);
+
+                    const jobCard = document.createElement("div");
+                    jobCard.className = "job-card";
+
+                    jobCard.innerHTML = `
+                        <h5>${job.title}</h5>
+                        <p><strong>Location:</strong> ${job.location}</p>
+                        <p><strong>Description:</strong> ${job.description}</p>
+                        <p><strong>Salary:</strong> ${job.salary}</p>
+                        <p><strong>Type:</strong> ${job.type}</p>
+                        <button class="btn btn-${alreadyApplied ? "secondary" : "primary"}"
+                            ${alreadyApplied ? "disabled" : `onclick='applyJob(${JSON.stringify(job)})'`}>
+                            ${alreadyApplied ? "Already Applied" : "Apply Now"}
+                        </button>
+                    `;
+
+                    jobList.appendChild(jobCard);
+                });
+            } catch (err) {
+                console.error("Failed to fetch jobs:", err);
+                document.getElementById("job-list").innerHTML = "<p>Error loading jobs.</p>";
+            }
+        }
+
+        function applyJob(job) {
+            const applicantEmail = localStorage.getItem("userEmail") || "noemail@example.com";
+
+            const payload = {
+                applicantEmail,
+                jobId: job.title.toLowerCase(),
+                title: job.title,
+                location: job.location,
+                status: "Pending",
+                employerEmail: job.employerEmail // ✅ Crucial fix
+            };
+
+            fetch("http://localhost:7071/api/appliedjobs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+                .then(res => {
+                    if (res.status === 409) {
+                        showAlert("You have already applied for this job.", "warning");
+                        return;
+                    }
+                    if (!res.ok) throw new Error("Failed to submit");
+                    return res.json();
+                })
+                .then(data => {
+                    if (data) {
+                        showAlert("Application submitted successfully!", "success");
+                        appliedJobs.push({ jobId: job.title.toLowerCase() });
+                        fetchJobs(); // Refresh UI
+                    }
+                })
+                .catch(err => {
+                    showAlert("Failed to apply. Try again.", "danger");
+                    console.error("Error applying for job:", err);
+                });
+        }
+
+        function showAlert(message, type) {
+            const alertContainer = document.getElementById("alert-container");
+            const alert = document.createElement("div");
+            alert.className = `alert alert-${type} alert-dismissible fade show`;
+            alert.role = "alert";
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            alertContainer.appendChild(alert);
+
+            setTimeout(() => alert.remove(), 4000);
+        }
+
+        fetchJobs();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>

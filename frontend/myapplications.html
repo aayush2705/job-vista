@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>My Applications - JobVista</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background: linear-gradient(135deg, #dbeafe, #f0f2f5);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .navbar {
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+            color: #0d6efd !important;
+        }
+
+        .container {
+            padding: 90px 20px 40px;
+        }
+
+        h2 {
+            font-weight: bold;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        th,
+        td {
+            padding: 15px;
+            text-align: center;
+        }
+
+        th {
+            background-color: #0d6efd;
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .btn-outline-danger {
+            margin-left: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid px-4">
+            <a class="navbar-brand" href="#">JobVista</a>
+            <div class="collapse navbar-collapse justify-content-end">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="http://localhost:7071/api/frontendpages?page=employee">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="http://localhost:7071/api/frontendpages?page=viewjobs">Browse Jobs</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h2>My Job Applications</h2>
+        <div class="card p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">Applications Overview</h5>
+                <button class="btn btn-primary" onclick="loadUserApplications()">Refresh</button>
+            </div>
+            <table class="table table-bordered" id="my-applications-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Title</th>
+                        <th>Location</th>
+                        <th>Status</th>
+                        <th>Applicant Email</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="application-body">
+                    <!-- Applications will be dynamically inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        async function loadUserApplications() {
+            const tableBody = document.getElementById("application-body");
+            tableBody.innerHTML = `<tr><td colspan="6">Loading...</td></tr>`;
+
+            try {
+                const userRes = await fetch("http://localhost:7071/api/getLoggedInUser");
+                if (!userRes.ok) throw new Error("Failed to fetch user data");
+                const userData = await userRes.json();
+                const loggedInEmail = userData.email;
+
+                if (!loggedInEmail) {
+                    tableBody.innerHTML = `<tr><td colspan="6" class="text-danger">No logged-in user found.</td></tr>`;
+                    return;
+                }
+
+                const appsRes = await fetch("http://localhost:7071/api/getappliedjobs");
+                if (!appsRes.ok) throw new Error("Failed to fetch applications");
+                const allApps = await appsRes.json();
+
+                const userApps = allApps.filter(app => app.applicantEmail === loggedInEmail);
+                tableBody.innerHTML = "";
+
+                if (userApps.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="6">You have not applied to any jobs yet.</td></tr>`;
+                    return;
+                }
+
+                userApps.forEach((app, index) => {
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${app.title || 'N/A'}</td>
+                        <td>${app.location || 'N/A'}</td>
+                        <td><span class="badge bg-${getStatusColor(app.status)}">${app.status || 'Pending'}</span></td>
+                        <td>${app.applicantEmail || 'N/A'}</td>
+                        <td>
+                            ${(app.status || '').toLowerCase() === 'pending'
+                            ? `<button class="btn btn-outline-danger" onclick='deleteApplication(${JSON.stringify(app)})'>Delete</button>`
+                            : ''}
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+            } catch (err) {
+                console.error(err);
+                tableBody.innerHTML = `<tr><td colspan="6" class="text-danger">Error loading applications.</td></tr>`;
+            }
+        }
+
+        function getStatusColor(status) {
+            switch ((status || '').toLowerCase()) {
+                case 'accepted': return 'success';
+                case 'rejected': return 'danger';
+                case 'pending': return 'warning';
+                default: return 'secondary';
+            }
+        }
+
+        async function deleteApplication(app) {
+            const { title, location, status, applicantEmail } = app;
+
+            if (!title || !location || !status || !applicantEmail) {
+                alert("Incomplete application data. Cannot delete.");
+                console.error("Invalid application object:", app);
+                return;
+            }
+
+            if (status.toLowerCase() !== 'pending') {
+                alert("Only pending applications can be deleted.");
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete the application for "${title}" at "${location}"?`)) return;
+
+            try {
+                const payload = { title, location, status, applicantEmail };
+                console.log("Sending delete request with payload:", payload);
+
+                const res = await fetch("http://localhost:7071/api/deleteApplication", {
+                    method: "DELETE",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const responseText = await res.text();
+                console.log("Delete response:", res.status, responseText);
+
+                if (!res.ok) {
+                    throw new Error(`Status ${res.status}: ${responseText}`);
+                }
+
+                alert("Application deleted successfully.");
+                loadUserApplications();
+            } catch (error) {
+                console.error("Deletion error:", error);
+                alert("Failed to delete application: " + error.message);
+            }
+        }
+
+        window.onload = function () {
+            loadUserApplications();
+            setInterval(loadUserApplications, 30000);
+        };
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
